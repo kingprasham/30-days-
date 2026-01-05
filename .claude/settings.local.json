@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer init:*)",
+      "Bash(composer require:*)",
+      "Bash(move databasesetup.sql databasesetup.sql)",
+      "Bash(dir \"C:\\xampp\\htdocs\\papa\\30 days\" /b)",
+      "Bash(php -r:*)",
+      "Bash(mysql:*)",
+      "Bash(php:*)",
+      "Bash(git init:*)",
+      "Bash(dir \"c:\\\\xampp\\\\htdocs\\\\papa\\\\30 days\" /b)",
+      "Bash(git add:*)"
+    ]
+  }
+}

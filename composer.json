@@ -1,0 +1,8 @@
+{
+    "name": "papa/customer-tracker",
+    "description": "Customer Tracking & Billing Management System",
+    "type": "project",
+    "require": {
+        "phpoffice/phpspreadsheet": "^5.3"
+    }
+}

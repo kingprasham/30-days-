@@ -1,0 +1,28 @@
+# GoDaddy / cPanel Apache Configuration
+# This file helps control PHP settings via Apache
+
+# Disable PHP error display (prevents 262145 from showing)
+php_flag display_errors Off
+php_flag display_startup_errors Off
+php_value error_reporting 0
+php_flag log_errors On
+
+# Enable output buffering
+php_flag output_buffering On
+
+# Set timezone
+php_value date.timezone "Asia/Kolkata"
+
+# Prevent directory listing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(ini|log|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
