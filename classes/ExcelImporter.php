@@ -21,11 +21,15 @@ class ExcelImporter {
         'State' => 'state',
         'Location' => 'location',
         'Customer Name' => 'customer_name',
+        'Customer Name ' => 'customer_name',
         'Billed' => 'billed',
+        'Billed ' => 'billed',
         'Challan Date' => 'challan_date',
         'Challan No' => 'challan_no',
+        'Challan No ' => 'challan_no',
         'Delivery Thru' => 'delivery_through',
         'Remark' => 'remark',
+        'Remark ' => 'remark',
         'Material Sending Location' => 'material_sending_location',
         'Printer Mode' => 'printer_mode',
         'Printer Model' => 'printer_model',
@@ -33,15 +37,19 @@ class ExcelImporter {
         'Collect Printer' => 'collect_printer'
     ];
 
-    // Product columns
+    // Product columns - exact matches from Excel (including variations with spaces/special chars)
     private $productColumns = [
+        // PVC Films
         'A3 White PVC Film',
         'A4 White PVC Film',
         'A5 White PVC Film',
+        // GSM Papers (with various spacing)
         '260 GSM Paper  A4',
         '260 GSM Paper  A5',
         '260 GSM Paper A4',
         '260 GSM Paper A5',
+        // Photo Papers (with dash separator)
+        ' 230CC Photo Paper - A3',
         '230CC Photo Paper - A3',
         '230CC Photo Paper - A4',
         '230CC Photo Paper - A5',
@@ -51,9 +59,12 @@ class ExcelImporter {
         '180 Gsm Photo Paper - A4',
         '180 GSM Photo Paper A3',
         '180 GSM Photo Paper A4',
+        // Blue Films (with various formats)
         'Blue Film (8*10)',
         'Blue Film A3',
+        'Blue Film A3 ',
         'Blue Film A4',
+        'Blue Film A4 ',
         'Blue Film (13*17)',
         'Blue Film (10*12)',
         'Blue Film 8x10',
@@ -146,7 +157,7 @@ class ExcelImporter {
 
             // Get headers from first row
             $headers = array_shift($rows);
-            $headers = array_map('trim', $headers);
+            $headers = array_map(function($h) { return trim((string)($h ?? '')); }, $headers);
 
             // Map headers to column indices
             $columnIndices = $this->mapColumns($headers);
@@ -217,7 +228,7 @@ class ExcelImporter {
             }
 
             $headers = array_shift($rows);
-            $headers = array_map('trim', $headers);
+            $headers = array_map(function($h) { return trim((string)($h ?? '')); }, $headers);
 
             // Map headers
             $columnIndices = $this->mapColumns($headers);
@@ -225,7 +236,7 @@ class ExcelImporter {
             // Get product columns
             $productCols = [];
             foreach ($headers as $idx => $header) {
-                if ($this->isProductColumn($header)) {
+                if (!empty($header) && $this->isProductColumn($header)) {
                     $productCols[$idx] = $header;
                 }
             }
@@ -237,7 +248,7 @@ class ExcelImporter {
 
             foreach (array_slice($rows, 0, $limit) as $row) {
                 $customerName = $row[$columnIndices['customer_name']] ?? '';
-                if (empty(trim($customerName))) continue;
+                if (empty(trim((string)$customerName))) continue;
 
                 $names[] = $customerName;
 
@@ -439,6 +450,60 @@ class ExcelImporter {
                     [$commitment, $customerRecord['id']]
                 );
             }
+        }
+
+        // Update rate if available
+        if (!empty($columnIndices['rate'])) {
+            $rate = floatval($row[$columnIndices['rate']] ?? 0);
+            if ($rate > 0) {
+                $this->db->execute(
+                    "UPDATE customers SET rate = ? WHERE id = ?",
+                    [$rate, $customerRecord['id']]
+                );
+            }
+        }
+
+        // Update printer information if available
+        $printerUpdates = [];
+        $printerParams = [];
+
+        if (!empty($columnIndices['printer_mode'])) {
+            $printerMode = trim($row[$columnIndices['printer_mode']] ?? '');
+            if (!empty($printerMode)) {
+                $printerUpdates[] = "printer_mode = ?";
+                $printerParams[] = $printerMode;
+            }
+        }
+
+        if (!empty($columnIndices['printer_model'])) {
+            $printerModel = trim($row[$columnIndices['printer_model']] ?? '');
+            if (!empty($printerModel)) {
+                $printerUpdates[] = "printer_model = ?";
+                $printerParams[] = $printerModel;
+            }
+        }
+
+        if (!empty($columnIndices['printer_sr_no'])) {
+            $printerSrNo = trim($row[$columnIndices['printer_sr_no']] ?? '');
+            if (!empty($printerSrNo)) {
+                $printerUpdates[] = "printer_sr_no = ?";
+                $printerParams[] = $printerSrNo;
+            }
+        }
+
+        if (!empty($columnIndices['collect_printer'])) {
+            $collectPrinter = strtolower(trim($row[$columnIndices['collect_printer']] ?? ''));
+            if ($collectPrinter === 'yes' || $collectPrinter === 'y') {
+                $printerUpdates[] = "collect_printer = 'yes'";
+            }
+        }
+
+        if (!empty($printerUpdates)) {
+            $printerParams[] = $customerRecord['id'];
+            $this->db->execute(
+                "UPDATE customers SET " . implode(", ", $printerUpdates) . " WHERE id = ?",
+                $printerParams
+            );
         }
 
         // Get challan data

@@ -182,9 +182,15 @@ CREATE TABLE IF NOT EXISTS customers (
     location VARCHAR(150),
     installation_date DATE,
     monthly_commitment DECIMAL(12,2) DEFAULT 0.00,
+    rate DECIMAL(10,2) DEFAULT 0.00,
     target_achieved ENUM('yes', 'no', 'partial') DEFAULT 'no',
     contract_start_date DATE,
     contract_end_date DATE,
+    -- Printer Information
+    printer_mode VARCHAR(100),
+    printer_model VARCHAR(100),
+    printer_sr_no VARCHAR(100),
+    collect_printer ENUM('yes', 'no') DEFAULT 'no',
     status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -470,3 +476,101 @@ LEFT JOIN categories cat ON p.category_id = cat.id
 LEFT JOIN challan_items ci ON p.id = ci.product_id
 GROUP BY p.id
 ORDER BY total_quantity DESC;
+
+-- =====================================================
+-- PAYMENT TRACKING VIEWS
+-- =====================================================
+
+-- View: Unbilled Challans (Pending Payments)
+CREATE OR REPLACE VIEW v_unbilled_challans AS
+SELECT
+    ch.id,
+    ch.challan_no,
+    ch.challan_date,
+    ch.total_amount,
+    c.id as customer_id,
+    c.name as customer_name,
+    c.location,
+    s.name as state_name,
+    DATEDIFF(CURDATE(), ch.challan_date) as days_pending
+FROM challans ch
+JOIN customers c ON ch.customer_id = c.id
+LEFT JOIN states s ON c.state_id = s.id
+WHERE ch.billed = 'no'
+ORDER BY ch.challan_date ASC;
+
+-- View: Payment Aging Analysis
+CREATE OR REPLACE VIEW v_payment_aging AS
+SELECT
+    c.id as customer_id,
+    c.name as customer_name,
+    c.location,
+    s.name as state_name,
+    SUM(CASE WHEN ch.billed = 'no' AND DATEDIFF(CURDATE(), ch.challan_date) <= 30 THEN ch.total_amount ELSE 0 END) as aging_0_30,
+    SUM(CASE WHEN ch.billed = 'no' AND DATEDIFF(CURDATE(), ch.challan_date) BETWEEN 31 AND 60 THEN ch.total_amount ELSE 0 END) as aging_31_60,
+    SUM(CASE WHEN ch.billed = 'no' AND DATEDIFF(CURDATE(), ch.challan_date) BETWEEN 61 AND 90 THEN ch.total_amount ELSE 0 END) as aging_61_90,
+    SUM(CASE WHEN ch.billed = 'no' AND DATEDIFF(CURDATE(), ch.challan_date) > 90 THEN ch.total_amount ELSE 0 END) as aging_90_plus,
+    SUM(CASE WHEN ch.billed = 'no' THEN ch.total_amount ELSE 0 END) as total_unbilled,
+    COUNT(CASE WHEN ch.billed = 'no' THEN 1 END) as unbilled_count
+FROM customers c
+LEFT JOIN states s ON c.state_id = s.id
+LEFT JOIN challans ch ON c.id = ch.customer_id
+WHERE c.status = 'active'
+GROUP BY c.id
+HAVING total_unbilled > 0
+ORDER BY total_unbilled DESC;
+
+-- View: Customer Activity Summary
+CREATE OR REPLACE VIEW v_customer_activity AS
+SELECT
+    c.id,
+    c.name,
+    c.location,
+    s.name as state_name,
+    c.monthly_commitment,
+    c.installation_date,
+    c.printer_model,
+    c.printer_sr_no,
+    COUNT(ch.id) as total_challans,
+    SUM(CASE WHEN ch.billed = 'yes' THEN 1 ELSE 0 END) as billed_challans,
+    SUM(CASE WHEN ch.billed = 'no' THEN 1 ELSE 0 END) as unbilled_challans,
+    COALESCE(SUM(ch.total_amount), 0) as total_revenue,
+    COALESCE(SUM(CASE WHEN ch.billed = 'yes' THEN ch.total_amount ELSE 0 END), 0) as billed_amount,
+    COALESCE(SUM(CASE WHEN ch.billed = 'no' THEN ch.total_amount ELSE 0 END), 0) as unbilled_amount,
+    MIN(ch.challan_date) as first_challan_date,
+    MAX(ch.challan_date) as last_challan_date,
+    DATEDIFF(CURDATE(), MAX(ch.challan_date)) as days_since_last_activity
+FROM customers c
+LEFT JOIN states s ON c.state_id = s.id
+LEFT JOIN challans ch ON c.id = ch.customer_id
+WHERE c.status = 'active'
+GROUP BY c.id;
+
+-- View: Monthly Billing Summary
+CREATE OR REPLACE VIEW v_monthly_billing AS
+SELECT
+    DATE_FORMAT(ch.challan_date, '%Y-%m') as month_year,
+    DATE_FORMAT(ch.challan_date, '%M %Y') as month_name,
+    COUNT(*) as total_challans,
+    SUM(CASE WHEN ch.billed = 'yes' THEN 1 ELSE 0 END) as billed_count,
+    SUM(CASE WHEN ch.billed = 'no' THEN 1 ELSE 0 END) as unbilled_count,
+    COALESCE(SUM(ch.total_amount), 0) as total_amount,
+    COALESCE(SUM(CASE WHEN ch.billed = 'yes' THEN ch.total_amount ELSE 0 END), 0) as billed_amount,
+    COALESCE(SUM(CASE WHEN ch.billed = 'no' THEN ch.total_amount ELSE 0 END), 0) as unbilled_amount,
+    ROUND(SUM(CASE WHEN ch.billed = 'yes' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as billing_rate
+FROM challans ch
+GROUP BY DATE_FORMAT(ch.challan_date, '%Y-%m')
+ORDER BY month_year DESC;
+
+-- View: Delivery Person Summary
+CREATE OR REPLACE VIEW v_delivery_summary AS
+SELECT
+    COALESCE(ch.delivery_through, 'Not Specified') as delivery_person,
+    COUNT(*) as total_deliveries,
+    COUNT(DISTINCT ch.customer_id) as unique_customers,
+    SUM(CASE WHEN ch.billed = 'yes' THEN 1 ELSE 0 END) as billed_deliveries,
+    SUM(CASE WHEN ch.billed = 'no' THEN 1 ELSE 0 END) as unbilled_deliveries
+FROM challans ch
+WHERE ch.challan_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+GROUP BY ch.delivery_through
+ORDER BY total_deliveries DESC;

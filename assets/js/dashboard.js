@@ -1,57 +1,44 @@
 /**
  * Dashboard Charts
  * Customer Tracking & Billing Management System
+ * Enhanced with Payment Tracking Charts
  */
 
 document.addEventListener('DOMContentLoaded', function() {
     initRevenueChart();
+    initBillingEfficiencyChart();
+    initAgingChart();
     initStateChart();
-    initTopCustomersChart();
     initCategoryChart();
 });
 
 // Color palette
 const colors = {
     primary: '#667eea',
-    success: '#38ef7d',
-    warning: '#f5576c',
-    info: '#4facfe',
-    danger: '#eb3349',
+    success: '#28a745',
+    warning: '#ffc107',
+    info: '#17a2b8',
+    danger: '#dc3545',
     secondary: '#6c757d',
     purple: '#764ba2',
-    teal: '#11998e'
-};
-
-const gradients = {
-    primary: ['#667eea', '#764ba2'],
-    success: ['#11998e', '#38ef7d'],
-    warning: ['#f093fb', '#f5576c'],
-    info: ['#4facfe', '#00f2fe']
+    teal: '#20c997',
+    orange: '#fd7e14',
+    green: '#38ef7d'
 };
 
 // Monthly Revenue Line Chart
 function initRevenueChart() {
     const ctx = document.getElementById('revenueChart');
-    if (!ctx) {
-        console.error('Revenue chart canvas not found');
+    if (!ctx) return;
+
+    if (typeof monthlyRevenueData === 'undefined' || !monthlyRevenueData || monthlyRevenueData.length === 0) {
+        ctx.parentElement.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-chart-line fa-3x mb-3" style="opacity: 0.3;"></i><p>No revenue data available</p></div>';
         return;
     }
-
-    if (!monthlyRevenueData || monthlyRevenueData.length === 0) {
-        console.warn('No monthly revenue data available');
-        ctx.getContext('2d');
-        const parent = ctx.parentElement;
-        parent.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-chart-line fa-3x mb-3" style="opacity: 0.3;"></i><p>No revenue data available for the selected period</p></div>';
-        return;
-    }
-
-    console.log('Initializing revenue chart with', monthlyRevenueData.length, 'months of data');
 
     const labels = monthlyRevenueData.map(d => d.label);
     const revenues = monthlyRevenueData.map(d => parseFloat(d.revenue) || 0);
-    const challans = monthlyRevenueData.map(d => parseInt(d.challans) || 0);
 
-    // Create gradient
     const gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 300);
     gradient.addColorStop(0, 'rgba(102, 126, 234, 0.3)');
     gradient.addColorStop(1, 'rgba(102, 126, 234, 0)');
@@ -78,9 +65,7 @@ function initRevenueChart() {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
+                legend: { display: false },
                 tooltip: {
                     mode: 'index',
                     intersect: false,
@@ -92,64 +77,175 @@ function initRevenueChart() {
                 }
             },
             scales: {
-                x: {
-                    grid: {
-                        display: false
-                    }
-                },
+                x: { grid: { display: false } },
                 y: {
                     beginAtZero: true,
                     ticks: {
                         callback: function(value) {
-                            if (value >= 100000) {
-                                return '₹' + (value / 100000).toFixed(1) + 'L';
-                            } else if (value >= 1000) {
-                                return '₹' + (value / 1000).toFixed(1) + 'K';
-                            }
+                            if (value >= 100000) return '₹' + (value / 100000).toFixed(1) + 'L';
+                            if (value >= 1000) return '₹' + (value / 1000).toFixed(1) + 'K';
                             return '₹' + value;
                         }
                     }
                 }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
             }
         }
     });
 }
 
-// State-wise Revenue Pie Chart
+// Billing Efficiency Chart (Billed vs Unbilled over time)
+function initBillingEfficiencyChart() {
+    const ctx = document.getElementById('billingEfficiencyChart');
+    if (!ctx) return;
+
+    if (typeof billingEfficiencyData === 'undefined' || !billingEfficiencyData || billingEfficiencyData.length === 0) {
+        ctx.parentElement.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-balance-scale fa-3x mb-3" style="opacity: 0.3;"></i><p>No billing data available</p></div>';
+        return;
+    }
+
+    const labels = billingEfficiencyData.map(d => d.label);
+    const billed = billingEfficiencyData.map(d => parseFloat(d.billed_amount) || 0);
+    const unbilled = billingEfficiencyData.map(d => parseFloat(d.unbilled_amount) || 0);
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Billed',
+                    data: billed,
+                    backgroundColor: colors.success,
+                    borderRadius: 4,
+                    maxBarThickness: 30
+                },
+                {
+                    label: 'Pending',
+                    data: unbilled,
+                    backgroundColor: colors.warning,
+                    borderRadius: 4,
+                    maxBarThickness: 30
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { boxWidth: 12, padding: 15 }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ₹' + context.parsed.y.toLocaleString('en-IN');
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { display: false }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            if (value >= 100000) return '₹' + (value / 100000).toFixed(1) + 'L';
+                            if (value >= 1000) return '₹' + (value / 1000).toFixed(1) + 'K';
+                            return '₹' + value;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Payment Aging Doughnut Chart
+function initAgingChart() {
+    const ctx = document.getElementById('agingChart');
+    if (!ctx) return;
+
+    if (typeof paymentAgingData === 'undefined' || !paymentAgingData) {
+        ctx.parentElement.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-chart-pie fa-3x mb-3" style="opacity: 0.3;"></i><p>No aging data available</p></div>';
+        return;
+    }
+
+    const data = paymentAgingData;
+    const hasData = data.aging_0_30 > 0 || data.aging_31_60 > 0 || data.aging_61_90 > 0 || data.aging_90_plus > 0;
+
+    if (!hasData) {
+        ctx.parentElement.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-check-circle fa-3x mb-3 text-success" style="opacity: 0.5;"></i><p>No pending payments!</p></div>';
+        return;
+    }
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['0-30 Days', '31-60 Days', '61-90 Days', '90+ Days'],
+            datasets: [{
+                data: [
+                    data.aging_0_30,
+                    data.aging_31_60,
+                    data.aging_61_90,
+                    data.aging_90_plus
+                ],
+                backgroundColor: [
+                    colors.success,
+                    colors.warning,
+                    colors.orange,
+                    colors.danger
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, padding: 10 }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0;
+                            return context.label + ': ₹' + context.parsed.toLocaleString('en-IN') + ' (' + percentage + '%)';
+                        }
+                    }
+                }
+            },
+            cutout: '55%'
+        }
+    });
+}
+
+// State-wise Revenue Chart
 function initStateChart() {
     const ctx = document.getElementById('stateChart');
-    if (!ctx) {
-        console.error('State chart canvas not found');
+    if (!ctx) return;
+
+    if (typeof stateRevenueData === 'undefined' || !stateRevenueData || stateRevenueData.length === 0) {
+        ctx.parentElement.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-map-marked-alt fa-3x mb-3" style="opacity: 0.3;"></i><p>No state-wise data</p></div>';
         return;
     }
-
-    if (!stateRevenueData || stateRevenueData.length === 0) {
-        console.warn('No state revenue data available');
-        const parent = ctx.parentElement;
-        parent.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-map-marked-alt fa-3x mb-3" style="opacity: 0.3;"></i><p>No state-wise revenue data available</p><small>Make sure customers have states assigned</small></div>';
-        return;
-    }
-
-    console.log('Initializing state chart with', stateRevenueData.length, 'states');
 
     const labels = stateRevenueData.map(d => d.state || 'Unknown');
     const revenues = stateRevenueData.map(d => parseFloat(d.revenue) || 0);
 
     const backgroundColors = [
-        colors.primary,
-        colors.success,
-        colors.warning,
-        colors.info,
-        colors.danger,
-        colors.purple,
-        colors.teal,
-        colors.secondary,
-        '#ffc107',
-        '#17a2b8'
+        colors.primary, colors.success, colors.warning, colors.info,
+        colors.danger, colors.purple, colors.teal, colors.secondary,
+        colors.orange, '#6f42c1'
     ];
 
     new Chart(ctx, {
@@ -168,11 +264,8 @@ function initStateChart() {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'right',
-                    labels: {
-                        boxWidth: 12,
-                        padding: 15
-                    }
+                    position: 'bottom',
+                    labels: { boxWidth: 10, padding: 8, font: { size: 10 } }
                 },
                 tooltip: {
                     callbacks: {
@@ -184,85 +277,25 @@ function initStateChart() {
                     }
                 }
             },
-            cutout: '60%'
+            cutout: '50%'
         }
     });
 }
 
-// Top Customers Horizontal Bar Chart
-function initTopCustomersChart() {
-    const ctx = document.getElementById('topCustomersChart');
-    if (!ctx || !topCustomersData) return;
-
-    const labels = topCustomersData.map(d => d.name.length > 20 ? d.name.substring(0, 20) + '...' : d.name);
-    const revenues = topCustomersData.map(d => parseFloat(d.revenue) || 0);
-
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Revenue',
-                data: revenues,
-                backgroundColor: colors.primary,
-                borderRadius: 5,
-                maxBarThickness: 25
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return '₹ ' + context.parsed.x.toLocaleString('en-IN');
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            if (value >= 100000) {
-                                return '₹' + (value / 100000).toFixed(1) + 'L';
-                            } else if (value >= 1000) {
-                                return '₹' + (value / 1000).toFixed(1) + 'K';
-                            }
-                            return '₹' + value;
-                        }
-                    }
-                },
-                y: {
-                    grid: {
-                        display: false
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Category Distribution Doughnut Chart
+// Category Distribution Chart
 function initCategoryChart() {
     const ctx = document.getElementById('categoryChart');
-    if (!ctx || !categoryData) return;
+    if (!ctx) return;
+
+    if (typeof categoryData === 'undefined' || !categoryData || categoryData.length === 0) {
+        ctx.parentElement.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-boxes fa-3x mb-3" style="opacity: 0.3;"></i><p>No category data</p></div>';
+        return;
+    }
 
     const labels = categoryData.map(d => d.category);
     const quantities = categoryData.map(d => parseInt(d.quantity) || 0);
 
-    const backgroundColors = [
-        colors.primary,
-        colors.success,
-        colors.warning,
-        colors.info
-    ];
+    const backgroundColors = [colors.primary, colors.success, colors.warning, colors.info, colors.purple];
 
     new Chart(ctx, {
         type: 'doughnut',
@@ -280,11 +313,8 @@ function initCategoryChart() {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'right',
-                    labels: {
-                        boxWidth: 12,
-                        padding: 15
-                    }
+                    position: 'bottom',
+                    labels: { boxWidth: 10, padding: 8, font: { size: 10 } }
                 },
                 tooltip: {
                     callbacks: {
@@ -296,7 +326,7 @@ function initCategoryChart() {
                     }
                 }
             },
-            cutout: '60%'
+            cutout: '50%'
         }
     });
 }

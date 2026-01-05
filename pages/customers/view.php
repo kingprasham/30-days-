@@ -142,6 +142,45 @@ $avgRevenue = count($customerChallans) > 0 ? $totalRevenue / count($customerChal
         </div>
     </div>
 
+    <!-- Printer Information -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="fas fa-print me-2"></i>Printer Information
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th width="40%">Printer Mode:</th>
+                        <td><?= htmlspecialchars($data['printer_mode'] ?? '-') ?></td>
+                    </tr>
+                    <tr>
+                        <th>Printer Model:</th>
+                        <td><?= htmlspecialchars($data['printer_model'] ?? '-') ?></td>
+                    </tr>
+                    <tr>
+                        <th>Serial Number:</th>
+                        <td><?= htmlspecialchars($data['printer_sr_no'] ?? '-') ?></td>
+                    </tr>
+                    <tr>
+                        <th>Collect Printer:</th>
+                        <td>
+                            <?php if (isset($data['collect_printer']) && $data['collect_printer'] === 'yes'): ?>
+                                <span class="badge bg-warning">Yes - Collect</span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary">No</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Rate:</th>
+                        <td><?= formatCurrency($data['rate'] ?? 0) ?></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Assigned Dealers -->
     <div class="col-lg-6">
         <div class="card h-100">

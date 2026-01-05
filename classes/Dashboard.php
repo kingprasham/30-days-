@@ -305,4 +305,239 @@ class Dashboard {
             [$days]
         );
     }
+
+    /**
+     * Get payment aging summary for dashboard
+     */
+    public function getPaymentAgingSummary() {
+        $result = $this->db->queryOne(
+            "SELECT
+                SUM(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) <= 30 THEN total_amount ELSE 0 END) as aging_0_30,
+                SUM(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) BETWEEN 31 AND 60 THEN total_amount ELSE 0 END) as aging_31_60,
+                SUM(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) BETWEEN 61 AND 90 THEN total_amount ELSE 0 END) as aging_61_90,
+                SUM(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) > 90 THEN total_amount ELSE 0 END) as aging_90_plus,
+                SUM(CASE WHEN billed = 'no' THEN total_amount ELSE 0 END) as total_unbilled,
+                COUNT(CASE WHEN billed = 'no' THEN 1 END) as unbilled_count,
+                COUNT(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) <= 30 THEN 1 END) as count_0_30,
+                COUNT(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) BETWEEN 31 AND 60 THEN 1 END) as count_31_60,
+                COUNT(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) BETWEEN 61 AND 90 THEN 1 END) as count_61_90,
+                COUNT(CASE WHEN billed = 'no' AND DATEDIFF(CURDATE(), challan_date) > 90 THEN 1 END) as count_90_plus
+             FROM challans"
+        );
+
+        return [
+            'aging_0_30' => floatval($result['aging_0_30'] ?? 0),
+            'aging_31_60' => floatval($result['aging_31_60'] ?? 0),
+            'aging_61_90' => floatval($result['aging_61_90'] ?? 0),
+            'aging_90_plus' => floatval($result['aging_90_plus'] ?? 0),
+            'total_unbilled' => floatval($result['total_unbilled'] ?? 0),
+            'unbilled_count' => intval($result['unbilled_count'] ?? 0),
+            'count_0_30' => intval($result['count_0_30'] ?? 0),
+            'count_31_60' => intval($result['count_31_60'] ?? 0),
+            'count_61_90' => intval($result['count_61_90'] ?? 0),
+            'count_90_plus' => intval($result['count_90_plus'] ?? 0)
+        ];
+    }
+
+    /**
+     * Get billing efficiency chart data (billed vs unbilled over months)
+     */
+    public function getBillingEfficiencyChart($months = 12) {
+        $data = $this->db->query(
+            "SELECT
+                DATE_FORMAT(challan_date, '%Y-%m') as month,
+                COUNT(*) as total_challans,
+                SUM(CASE WHEN billed = 'yes' THEN 1 ELSE 0 END) as billed_count,
+                SUM(CASE WHEN billed = 'no' THEN 1 ELSE 0 END) as unbilled_count,
+                COALESCE(SUM(CASE WHEN billed = 'yes' THEN total_amount ELSE 0 END), 0) as billed_amount,
+                COALESCE(SUM(CASE WHEN billed = 'no' THEN total_amount ELSE 0 END), 0) as unbilled_amount
+             FROM challans
+             WHERE challan_date >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+             GROUP BY month
+             ORDER BY month",
+            [$months]
+        );
+
+        // Fill missing months
+        $dataMap = [];
+        foreach ($data as $row) {
+            $dataMap[$row['month']] = $row;
+        }
+
+        $result = [];
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $date = date('Y-m', strtotime("-$i months"));
+            $label = date('M Y', strtotime("-$i months"));
+
+            if (isset($dataMap[$date])) {
+                $result[] = [
+                    'month' => $date,
+                    'label' => $label,
+                    'total_challans' => intval($dataMap[$date]['total_challans']),
+                    'billed_count' => intval($dataMap[$date]['billed_count']),
+                    'unbilled_count' => intval($dataMap[$date]['unbilled_count']),
+                    'billed_amount' => floatval($dataMap[$date]['billed_amount']),
+                    'unbilled_amount' => floatval($dataMap[$date]['unbilled_amount'])
+                ];
+            } else {
+                $result[] = [
+                    'month' => $date,
+                    'label' => $label,
+                    'total_challans' => 0,
+                    'billed_count' => 0,
+                    'unbilled_count' => 0,
+                    'billed_amount' => 0,
+                    'unbilled_amount' => 0
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get top customers with pending payments
+     */
+    public function getTopPendingPayments($limit = 10) {
+        return $this->db->query(
+            "SELECT
+                c.id,
+                c.name,
+                c.location,
+                s.name as state_name,
+                SUM(CASE WHEN ch.billed = 'no' THEN ch.total_amount ELSE 0 END) as pending_amount,
+                COUNT(CASE WHEN ch.billed = 'no' THEN 1 END) as pending_challans,
+                MAX(ch.challan_date) as last_challan_date,
+                DATEDIFF(CURDATE(), MIN(CASE WHEN ch.billed = 'no' THEN ch.challan_date END)) as oldest_pending_days
+             FROM customers c
+             LEFT JOIN states s ON c.state_id = s.id
+             LEFT JOIN challans ch ON c.id = ch.customer_id
+             WHERE c.status = 'active'
+             GROUP BY c.id
+             HAVING pending_amount > 0
+             ORDER BY pending_amount DESC
+             LIMIT ?",
+            [$limit]
+        );
+    }
+
+    /**
+     * Get delivery person performance
+     */
+    public function getDeliveryPerformance() {
+        return $this->db->query(
+            "SELECT
+                COALESCE(delivery_through, 'Not Assigned') as delivery_person,
+                COUNT(*) as total_deliveries,
+                COUNT(DISTINCT customer_id) as unique_customers,
+                SUM(CASE WHEN billed = 'yes' THEN 1 ELSE 0 END) as billed,
+                SUM(CASE WHEN billed = 'no' THEN 1 ELSE 0 END) as unbilled,
+                ROUND(SUM(CASE WHEN billed = 'yes' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) as billing_rate
+             FROM challans
+             WHERE challan_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+             AND delivery_through IS NOT NULL
+             AND TRIM(delivery_through) != ''
+             GROUP BY delivery_through
+             ORDER BY total_deliveries DESC
+             LIMIT 10"
+        );
+    }
+
+    /**
+     * Get customer payment alerts (overdue > 30 days)
+     */
+    public function getPaymentAlerts($limit = 10) {
+        return $this->db->query(
+            "SELECT
+                ch.id,
+                ch.challan_no,
+                ch.challan_date,
+                ch.total_amount,
+                c.id as customer_id,
+                c.name as customer_name,
+                c.location,
+                s.name as state_name,
+                DATEDIFF(CURDATE(), ch.challan_date) as days_overdue
+             FROM challans ch
+             JOIN customers c ON ch.customer_id = c.id
+             LEFT JOIN states s ON c.state_id = s.id
+             WHERE ch.billed = 'no'
+             AND DATEDIFF(CURDATE(), ch.challan_date) > 30
+             ORDER BY ch.challan_date ASC
+             LIMIT ?",
+            [$limit]
+        );
+    }
+
+    /**
+     * Get monthly collection trend
+     */
+    public function getMonthlyCollectionTrend($months = 12) {
+        $data = $this->db->query(
+            "SELECT
+                DATE_FORMAT(challan_date, '%Y-%m') as month,
+                COALESCE(SUM(total_amount), 0) as total_amount,
+                COALESCE(SUM(CASE WHEN billed = 'yes' THEN total_amount ELSE 0 END), 0) as collected,
+                COALESCE(SUM(CASE WHEN billed = 'no' THEN total_amount ELSE 0 END), 0) as pending
+             FROM challans
+             WHERE challan_date >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+             GROUP BY month
+             ORDER BY month",
+            [$months]
+        );
+
+        $dataMap = [];
+        foreach ($data as $row) {
+            $dataMap[$row['month']] = $row;
+        }
+
+        $result = [];
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $date = date('Y-m', strtotime("-$i months"));
+            $label = date('M Y', strtotime("-$i months"));
+
+            if (isset($dataMap[$date])) {
+                $result[] = [
+                    'month' => $date,
+                    'label' => $label,
+                    'total_amount' => floatval($dataMap[$date]['total_amount']),
+                    'collected' => floatval($dataMap[$date]['collected']),
+                    'pending' => floatval($dataMap[$date]['pending'])
+                ];
+            } else {
+                $result[] = [
+                    'month' => $date,
+                    'label' => $label,
+                    'total_amount' => 0,
+                    'collected' => 0,
+                    'pending' => 0
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get product-wise sales summary
+     */
+    public function getProductSalesSummary() {
+        return $this->db->query(
+            "SELECT
+                p.id,
+                p.name,
+                cat.name as category_name,
+                COALESCE(SUM(ci.quantity), 0) as total_quantity,
+                COALESCE(SUM(ci.amount), 0) as total_amount,
+                COUNT(DISTINCT ch.customer_id) as customer_count
+             FROM products p
+             LEFT JOIN categories cat ON p.category_id = cat.id
+             LEFT JOIN challan_items ci ON p.id = ci.product_id
+             LEFT JOIN challans ch ON ci.challan_id = ch.id
+             GROUP BY p.id
+             HAVING total_quantity > 0
+             ORDER BY total_quantity DESC
+             LIMIT 15"
+        );
+    }
 }
