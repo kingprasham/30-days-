@@ -31,7 +31,123 @@ $topPendingPayments = $dashboard->getTopPendingPayments(10);
 $paymentAlerts = $dashboard->getPaymentAlerts(10);
 $deliveryPerformance = $dashboard->getDeliveryPerformance();
 $productSales = $dashboard->getProductSalesSummary();
+
+// Follow-up data
+$followUp = new FollowUp();
+$todaysFollowUps = $followUp->getTodays();
+$overdueFollowUps = $followUp->getOverdue();
+$upcomingFollowUps = $followUp->getUpcoming(7);
+$followUpStats = $followUp->getStats();
 ?>
+
+<!-- Follow-Up Alerts Section -->
+<?php if (!empty($todaysFollowUps) || !empty($overdueFollowUps)): ?>
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert alert-warning alert-dismissible fade show mb-0" role="alert">
+            <div class="d-flex align-items-center">
+                <i class="fas fa-bell fa-2x me-3"></i>
+                <div class="flex-grow-1">
+                    <h5 class="alert-heading mb-2">Follow-Up Reminders</h5>
+                    <p class="mb-0">
+                        <?php if (!empty($todaysFollowUps)): ?>
+                            <strong class="text-danger"><?= count($todaysFollowUps) ?> follow-up(s) scheduled for today</strong>
+                        <?php endif; ?>
+                        <?php if (!empty($overdueFollowUps)): ?>
+                            <?php if (!empty($todaysFollowUps)): ?> | <?php endif; ?>
+                            <strong class="text-danger"><?= count($overdueFollowUps) ?> overdue follow-up(s)</strong>
+                        <?php endif; ?>
+                        <a href="<?= BASE_URL ?>/pages/followups/list.php" class="alert-link ms-3">View All Follow-Ups &rarr;</a>
+                    </p>
+                </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Today's Follow-Ups -->
+<?php if (!empty($todaysFollowUps)): ?>
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-calendar-check me-2"></i>Today's Follow-Ups (<?= count($todaysFollowUps) ?>)</span>
+                <a href="<?= BASE_URL ?>/pages/followups/add.php" class="btn btn-sm btn-light">
+                    <i class="fas fa-plus me-1"></i>Add New
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="10%">Time</th>
+                                <th width="20%">Customer</th>
+                                <th width="25%">Title</th>
+                                <th width="15%">Type</th>
+                                <th width="10%">Priority</th>
+                                <th width="15%">Contact</th>
+                                <th width="5%">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($todaysFollowUps as $fu): ?>
+                            <tr>
+                                <td>
+                                    <strong><?= $fu['follow_up_time'] ? date('g:i A', strtotime($fu['follow_up_time'])) : 'Anytime' ?></strong>
+                                </td>
+                                <td>
+                                    <a href="<?= BASE_URL ?>/pages/customers/view.php?id=<?= $fu['customer_id'] ?>">
+                                        <?= htmlspecialchars($fu['customer_name']) ?>
+                                    </a>
+                                    <br><small class="text-muted"><?= htmlspecialchars($fu['location'] ?? '') ?></small>
+                                </td>
+                                <td>
+                                    <?= htmlspecialchars($fu['title']) ?>
+                                    <?php if ($fu['description']): ?>
+                                        <br><small class="text-muted"><?= htmlspecialchars(substr($fu['description'], 0, 50)) ?>...</small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary"><?= ucfirst($fu['type']) ?></span>
+                                </td>
+                                <td>
+                                    <?php
+                                    $priorityColors = [
+                                        'urgent' => 'danger',
+                                        'high' => 'warning',
+                                        'medium' => 'info',
+                                        'low' => 'secondary'
+                                    ];
+                                    $color = $priorityColors[$fu['priority']] ?? 'secondary';
+                                    ?>
+                                    <span class="badge bg-<?= $color ?>"><?= ucfirst($fu['priority']) ?></span>
+                                </td>
+                                <td>
+                                    <?php if ($fu['contact_person']): ?>
+                                        <small><?= htmlspecialchars($fu['contact_person']) ?></small><br>
+                                    <?php endif; ?>
+                                    <?php if ($fu['contact_no']): ?>
+                                        <small class="text-muted"><?= htmlspecialchars($fu['contact_no']) ?></small>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-success" onclick="markFollowUpComplete(<?= $fu['id'] ?>)" title="Mark Complete">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Stats Cards Row 1 -->
 <div class="row g-3 mb-4">
@@ -538,6 +654,32 @@ const topCustomersData = <?= json_encode($topCustomers) ?>;
 const categoryData = <?= json_encode($categoryDistribution) ?>;
 const billingEfficiencyData = <?= json_encode($billingEfficiency) ?>;
 const paymentAgingData = <?= json_encode($paymentAging) ?>;
+
+// Follow-up functions
+function markFollowUpComplete(id) {
+    if (confirm('Mark this follow-up as completed?')) {
+        const notes = prompt('Add completion notes (optional):');
+
+        fetch('<?= BASE_URL ?>/api/followups.php?action=complete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ id: id, notes: notes })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Could not mark follow-up as complete'));
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error.message);
+        });
+    }
+}
 </script>
 
 <script src="<?= ASSETS_URL ?>/js/dashboard.js"></script>

@@ -48,6 +48,11 @@ function isActive($page, $dir = null) {
             <span class="sidebar-text">Contracts</span>
         </a>
 
+        <a href="<?= BASE_URL ?>/pages/followups/list.php" class="<?= isActive('list', 'followups') ?>">
+            <i class="fas fa-calendar-check"></i>
+            <span class="sidebar-text">Follow-Ups</span>
+        </a>
+
         <!-- Master Data -->
         <div class="menu-header sidebar-text">Master Data</div>
 

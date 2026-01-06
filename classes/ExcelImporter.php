@@ -65,8 +65,12 @@ class ExcelImporter {
         'Printer Model' => 'printer_model',
         'Printer Model No.' => 'printer_model',
         'Printer Sr No' => 'printer_sr_no',
-        'Sr. No.' => 'printer_sr_no',
         'Collect Printer' => 'collect_printer',
+
+        // Media/Finance
+        'Media Type' => 'media_type',
+        'Finance' => 'finance',
+        'Finance ' => 'finance',
 
         // Contract/AMC
         'AMC Start Date' => 'contract_start_date',
