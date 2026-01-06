@@ -12,29 +12,75 @@ class ExcelImporter {
     private $errors = [];
     private $warnings = [];
 
-    // Column mapping from Excel to database
+    // Column mapping from Excel to database (supports multiple Excel formats)
     private $columnMap = [
-        'Installation Date' => 'installation_date',
-        'Monthly Commintment' => 'monthly_commitment',
-        'Monthly Commitment' => 'monthly_commitment',
-        'Rate' => 'rate',
-        'State' => 'state',
-        'Location' => 'location',
+        // Customer Name variations
         'Customer Name' => 'customer_name',
         'Customer Name ' => 'customer_name',
+        'Party Name' => 'customer_name',
+        'Customer' => 'customer_name',
+        'Name' => 'customer_name',
+
+        // Installation Date variations
+        'Installation Date' => 'installation_date',
+        'Inst. Date' => 'installation_date',
+        'Install Date' => 'installation_date',
+
+        // Monthly Commitment variations
+        'Monthly Commintment' => 'monthly_commitment',
+        'Monthly Commitment' => 'monthly_commitment',
+        'Month;y Commitment' => 'monthly_commitment',
+        'Per Month Commitment Amount' => 'monthly_commitment',
+
+        // Rate
+        'Rate' => 'rate',
+
+        // Location
+        'State' => 'state',
+        'Location' => 'location',
+
+        // Billing
         'Billed' => 'billed',
         'Billed ' => 'billed',
+
+        // Challan
         'Challan Date' => 'challan_date',
+        'Recd. Date' => 'challan_date',
+        'Last Order Date' => 'last_order_date',
         'Challan No' => 'challan_no',
         'Challan No ' => 'challan_no',
+
+        // Delivery
         'Delivery Thru' => 'delivery_through',
+        'Supply Mode' => 'delivery_through',
+
+        // Remarks
         'Remark' => 'remark',
         'Remark ' => 'remark',
         'Material Sending Location' => 'material_sending_location',
+
+        // Printer Information
         'Printer Mode' => 'printer_mode',
+        'Modality' => 'printer_mode',
         'Printer Model' => 'printer_model',
+        'Printer Model No.' => 'printer_model',
         'Printer Sr No' => 'printer_sr_no',
-        'Collect Printer' => 'collect_printer'
+        'Sr. No.' => 'printer_sr_no',
+        'Collect Printer' => 'collect_printer',
+
+        // Contract/AMC
+        'AMC Start Date' => 'contract_start_date',
+        'AMC End Date' => 'contract_end_date',
+        'Agreement No' => 'agreement_no',
+
+        // Contact Info
+        'Contact person' => 'contact_person',
+        'Contact no' => 'contact_no',
+        'Email ID' => 'email',
+
+        // IDs
+        'Customer ID' => 'customer_code',
+        'Acc ID.' => 'account_id'
     ];
 
     // Product columns - exact matches from Excel (including variations with spaces/special chars)
@@ -71,6 +117,9 @@ class ExcelImporter {
         'Blue Film 13x17',
         'Blue Film 10x12'
     ];
+
+    // Monthly supply columns (for new Excel format)
+    private $monthlySupplyPattern = '/^(January|February|March|April|May|June|July|August|Sept|September|Oct|October|Nov|November|Dec|December|Aug)\s*(Supply|Amount|Page Count|Revenue)$/i';
 
     public function __construct() {
         $this->db = Database::getInstance();
@@ -247,18 +296,27 @@ class ExcelImporter {
             $names = [];
 
             foreach (array_slice($rows, 0, $limit) as $row) {
-                $customerName = $row[$columnIndices['customer_name']] ?? '';
+                // Safely get customer name with null check on index
+                $customerNameIndex = $columnIndices['customer_name'] ?? null;
+                $customerName = $customerNameIndex !== null ? ($row[$customerNameIndex] ?? '') : '';
                 if (empty(trim((string)$customerName))) continue;
 
                 $names[] = $customerName;
 
+                // Safely access column values
+                $stateIdx = $columnIndices['state'] ?? null;
+                $locationIdx = $columnIndices['location'] ?? null;
+                $challanDateIdx = $columnIndices['challan_date'] ?? null;
+                $challanNoIdx = $columnIndices['challan_no'] ?? null;
+                $billedIdx = $columnIndices['billed'] ?? null;
+
                 $previewRow = [
                     'customer_name' => $customerName,
-                    'state' => $row[$columnIndices['state'] ?? ''] ?? '',
-                    'location' => $row[$columnIndices['location'] ?? ''] ?? '',
-                    'challan_date' => $this->parseDate($row[$columnIndices['challan_date'] ?? ''] ?? ''),
-                    'challan_no' => $row[$columnIndices['challan_no'] ?? ''] ?? '',
-                    'billed' => $row[$columnIndices['billed'] ?? ''] ?? '',
+                    'state' => $stateIdx !== null ? ($row[$stateIdx] ?? '') : '',
+                    'location' => $locationIdx !== null ? ($row[$locationIdx] ?? '') : '',
+                    'challan_date' => $challanDateIdx !== null ? $this->parseDate($row[$challanDateIdx] ?? '') : '',
+                    'challan_no' => $challanNoIdx !== null ? ($row[$challanNoIdx] ?? '') : '',
+                    'billed' => $billedIdx !== null ? ($row[$billedIdx] ?? '') : '',
                     'products' => []
                 ];
 
@@ -339,7 +397,7 @@ class ExcelImporter {
             }
         }
 
-        // Check patterns
+        // Check patterns for product names
         $patterns = [
             '/film/i',
             '/paper/i',
@@ -354,7 +412,20 @@ class ExcelImporter {
             }
         }
 
+        // Check for monthly supply columns (new Excel format)
+        if ($this->isMonthlySupplyColumn($header)) {
+            return true;
+        }
+
         return false;
+    }
+
+    /**
+     * Check if column is a monthly supply/amount column
+     */
+    private function isMonthlySupplyColumn($header) {
+        $header = trim($header);
+        return preg_match($this->monthlySupplyPattern, $header) === 1;
     }
 
     /**
@@ -476,10 +547,75 @@ class ExcelImporter {
         }
 
         if (!empty($columnIndices['printer_model'])) {
-            $printerModel = trim($row[$columnIndices['printer_model']] ?? '');
+            $printerModel = trim((string)($row[$columnIndices['printer_model']] ?? ''));
             if (!empty($printerModel)) {
                 $printerUpdates[] = "printer_model = ?";
                 $printerParams[] = $printerModel;
+            }
+        }
+
+        // Add contact info and agreement details
+        if (!empty($columnIndices['agreement_no'])) {
+            $agreementNo = trim((string)($row[$columnIndices['agreement_no']] ?? ''));
+            if (!empty($agreementNo)) {
+                $printerUpdates[] = "agreement_no = ?";
+                $printerParams[] = $agreementNo;
+            }
+        }
+
+        if (!empty($columnIndices['contact_person'])) {
+            $contactPerson = trim((string)($row[$columnIndices['contact_person']] ?? ''));
+            if (!empty($contactPerson)) {
+                $printerUpdates[] = "contact_person = ?";
+                $printerParams[] = $contactPerson;
+            }
+        }
+
+        if (!empty($columnIndices['contact_no'])) {
+            $contactNo = trim((string)($row[$columnIndices['contact_no']] ?? ''));
+            if (!empty($contactNo)) {
+                $printerUpdates[] = "contact_no = ?";
+                $printerParams[] = $contactNo;
+            }
+        }
+
+        if (!empty($columnIndices['email'])) {
+            $email = trim((string)($row[$columnIndices['email']] ?? ''));
+            if (!empty($email)) {
+                $printerUpdates[] = "email = ?";
+                $printerParams[] = $email;
+            }
+        }
+
+        if (!empty($columnIndices['customer_code'])) {
+            $customerCode = trim((string)($row[$columnIndices['customer_code']] ?? ''));
+            if (!empty($customerCode)) {
+                $printerUpdates[] = "customer_code = ?";
+                $printerParams[] = $customerCode;
+            }
+        }
+
+        if (!empty($columnIndices['contract_start_date'])) {
+            $contractStart = $this->parseDate($row[$columnIndices['contract_start_date']] ?? '');
+            if ($contractStart) {
+                $printerUpdates[] = "contract_start_date = ?";
+                $printerParams[] = $contractStart;
+            }
+        }
+
+        if (!empty($columnIndices['contract_end_date'])) {
+            $contractEnd = $this->parseDate($row[$columnIndices['contract_end_date']] ?? '');
+            if ($contractEnd) {
+                $printerUpdates[] = "contract_end_date = ?";
+                $printerParams[] = $contractEnd;
+            }
+        }
+
+        if (!empty($columnIndices['last_order_date'])) {
+            $lastOrderDate = $this->parseDate($row[$columnIndices['last_order_date']] ?? '');
+            if ($lastOrderDate) {
+                $printerUpdates[] = "last_order_date = ?";
+                $printerParams[] = $lastOrderDate;
             }
         }
 
