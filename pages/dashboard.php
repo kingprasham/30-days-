@@ -40,6 +40,14 @@ $upcomingFollowUps = $followUp->getUpcoming(7);
 $followUpStats = $followUp->getStats();
 ?>
 
+<style>
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+</style>
+
 <!-- Follow-Up Alerts Section -->
 <?php if (!empty($todaysFollowUps) || !empty($overdueFollowUps)): ?>
 <div class="row mb-4">
@@ -654,6 +662,10 @@ const topCustomersData = <?= json_encode($topCustomers) ?>;
 const categoryData = <?= json_encode($categoryDistribution) ?>;
 const billingEfficiencyData = <?= json_encode($billingEfficiency) ?>;
 const paymentAgingData = <?= json_encode($paymentAging) ?>;
+
+// Debug: Log chart data
+console.log('Billing Efficiency Data:', billingEfficiencyData);
+console.log('Payment Aging Data:', paymentAgingData);
 
 // Follow-up functions
 function markFollowUpComplete(id) {
